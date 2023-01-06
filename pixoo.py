@@ -36,14 +36,13 @@ class Pixoo:
         self._ip = ip
         self._size = size
         self._refresh = refresh
+        self.buffer = []
 
         self.url = f'http://{ip}:80/post'
         self.remote = "https://app.divoom-gz.com/"
     
     def clamp(self, n, minn, maxn):
         return max(min(maxn, n), minn)
-
-
 
     def __post(self, url, data=None):
         response = requests.post(url, data)
@@ -75,6 +74,11 @@ class Pixoo:
 
     def _local_post(self, data=None):
         return self.__local_post(url=self.url, data=data)
+
+    def find_device(self):
+        response = self._remote_post("Device/ReturnSameLANDevice")
+        print(response.text)
+        return(response.json())
 
     def dial_type(self):
         '''
@@ -392,7 +396,7 @@ class Pixoo:
             the folder which includes gif files, and the net gif file. 
             the gif files only support the size (1616 ,32 32 ,64 * 64).
         
-        :param filetype: 2:play net file; 1:play tf’s folder; 0:play tf's file
+        :param filetype: 2:play net file; 1:play tf's folder; 0:play tf's file
         :param filename: 2:net file address; 1:the folder path; 0:the file path
         ''' 
         data = {"Command": "Device/PlayTFGif", "FileType": filetype, "FileName": filename}
@@ -401,12 +405,12 @@ class Pixoo:
     def get_sending_animation_pic_id(self):
         '''
         Description: get the PicId which the command “Draw/SendHttpGif”。
-            It will return the PicId , it’s value is the previous gif id plus 1, 
+            It will return the PicId , it's value is the previous gif id plus 1, 
             the command will be implemented after the 90095 version.
         ''' 
         data = {"Command": "Draw/GetHttpGifId"}
         response = self._local_post(data)
-        print(response.text)
+        return(response.json())
     
     def reset_sending_animation_pic_id(self):
         '''
@@ -416,6 +420,19 @@ class Pixoo:
         self._local_post(data)
 
     def send_animation(self, pic_num=1, pic_width=64, pic_offset=0, pic_id=0, pic_speed=60, pic_data=None):
+        '''
+        Description: send animation to device, and device will loop animation.
+            This method only accepts one picture of animation at a time, and the picture format must be 
+            based on Base64 encoded RGB data. If the animation is composed of N pictures, it will be sent     
+            in N times, one picture data will be sent each time with the picture offset
+        
+        :param pic_num: total number of single pictures in the animation, must be < 60
+        :param pic_width: the pixels of the animation, [16, 32, 64]
+        :param pic_offset: the frame number of the animation, starting from 0
+        :param pic_id: the animation ID, one per animation
+        :param pic_speed: the animation speed, in ms
+        :param pic_data: the picture base64 encoded RGB data, left to right and top to bottom
+        '''
         data = {
             "Command": "Draw/SendHttpGif",
             "PicNum": pic_num,
@@ -423,34 +440,48 @@ class Pixoo:
             "PicOffset": pic_offset,
             "PicID": pic_id,
             "PicSpeed": pic_speed,
-            "PicData": str(base64.b64encode(bytearray(pic_data)).decode()),
+            "PicData": pic_data,
         }
         self._local_post(data)
 
-    def create_fake_buffer(self, start=0, delta=.0003):
-        buffer = []
-        h, s, v = (start, .5, .5)
-        for x in range(64*64):
-            (r, g, b) = colorsys.hsv_to_rgb(h, s, v)
-            buffer.append(int(255*r))
-            buffer.append(int(255*g))
-            buffer.append(int(255*b))
-            h += delta
-            if h > 1:
-                h = 0
-        return buffer
-    
-    def rainbow(self):
-        self.reset_sending_animation_pic_id()
+    def buffer_clear(self):
+        self.buffer = []
 
-        pic_num = 40
-        for x in range(pic_num):
-            buffer = self.create_fake_buffer(x/pic_num)
-            self.send_animation(pic_num=pic_num, pic_offset=x, pic_data=buffer)
+    def buffer_set(self, buffer):
+        self.buffer = buffer
+
+    def _prepare_buffer(self):
+        self.buffer_str = str(base64.b64encode(bytearray(self.buffer)).decode())
+
+    def send_gif(self):
+        if not self.buffer:
+            print(f"The buffer is empty.")
+            return
+        self._prepare_buffer()
+        self._send_gif()
+        
+    def _send_gif(self):
+        pass
+
+    def send_image(self):
+        if not self.buffer:
+            print(f"The buffer is empty.")
+            return
+        self._prepare_buffer()
+        self._send_image()
+
+    def _send_image(self):
+        pic_id = self.get_sending_animation_pic_id()['PicId']
+        self.send_animation(pic_num=1,
+                            pic_width=self._size,
+                            pic_offset=0,
+                            pic_id=pic_id,
+                            pic_speed=1000,
+                            pic_data=self.buffer_str)
 
     def album(self):
         buffer = []
-        img = Image.open('dsotm1.jpg')
+        img = Image.open('roo.jpg')
         img = img.rotate(270)
         img = ImageOps.mirror(img)
         small = img.resize((64,64), Image.Resampling.BILINEAR)
@@ -463,32 +494,102 @@ class Pixoo:
         return buffer
 
     def send_album(self):
-        self.reset_sending_animation_pic_id()
-        buffer = self.album()
-        self.send_animation(pic_data=buffer)
+        # self.reset_sending_animation_pic_id()
+        self.buffer = self.album()
+        self.send_image()
     
-    def send_text(self, text_id, x, y, dir, text_width, text_string, speed, color, align):
-        pass
+    def send_text(self, text_id, x, y, dirr, font, text_width, text_string, speed, color, align):
+        '''
+        Description: send text to device, and device will add one text in current animation.
+            the command can be runned after sending animation(the “Draw/SendHttpGif” comand). 
+            the command will be active at 90102 version. It will use font types from app 
+            animation font, and display in one line, it will scroll if the text's length 
+            isn't enough. the text height is 16 point.
+            
+        :param text_id: the text id is unique and will be replaced with the same ID, it is smaller than 20
+        :param x: the start x postion
+        :param y: the start y postion
+        :param dirr: direction of scroll
+            0: scroll left
+            1: scroll right
+        :param font: 0 to 7, app animation's font
+        :param text_width: the text width is based point and bigger than 16, smaller than 64
+        :param text_string: the text string is utf8 string and lenght is smaller than 512
+        :param speed: the scroll speed if it need scroll, the time (ms) the text move one step
+        :param color: the font color, eg:#FFFF00
+        :param align: horizontal text alignment, it will support at 90102 version.
+            1: left;
+            2: middle;
+            3: right
+
+        example: self.send_text(0, 0, 0, 0, 0, 64, "Hello World", 0, "#FFFF00", 2)
+        '''
+        if not self._font_list:
+            self.get_font_list()
+        for _font in self._font_list:
+            if _font['id'] == font:
+                break
+        else:
+            print(f"font {font} not found in font list.")
+            print("something will still be displayed though.")
+
+        data = {
+            "Command": "Draw/SendHttpText",
+            "TextId": text_id,
+            "x": x,
+            "y": y,
+            "dir": dirr,
+            "font": font,
+            "TextWidth": text_width,
+            "TextString": text_string,
+            "speed": speed,
+            "color": color,
+            "align": align,
+        }
+        self._local_post(data)
 
     def clear_all_text_area(self):
-        pass
+        '''
+        Description: it will clear all text area.
+        '''
+        data = {
+            "Command": "Draw/ClearHttpText"
+        }
+        self._local_post(data)
 
     def get_font_list(self):
         response = self._remote_post(url="Device/GetTimeDialFontList")
         self._font_list = response.json()["FontList"]
-        print(response.text)
+        return(self._font_list)
 
     def send_display_list(self, item_list, text_id, type, x, y, dir, font, text_width, text_height, text_string, speed, color, update_time, align):
         pass
 
     def play_buzzer(self, active_time_in_cycle, off_time_in_cycle, play_total_time):
-        pass
+        '''
+        Description: it plays the buzzer
+
+        :param active_time_in_cycle: Working time of buzzer in one cycle in milliseconds
+        :param off_time_in_cycle: Idle time of buzzer in one cycle in milliseconds
+        :param play_total_time: Working total time of buzzer in milliseconds
+        '''
+        data = {"Command": "Device/PlayBuzzer",
+                "ActiveTimeInCycle": active_time_in_cycle,
+                "OffTimeInCycle": off_time_in_cycle,
+                "PlayTotalTime": play_total_time}
+        self._local_post(data)
 
     def play_divoom_gif(self, file_id):
         pass
 
-    def get_img_upload_list(self, device_id, device_mac, page):
-        pass
+    def get_img_upload_list(self, device_id=None, device_mac=None, page=1):
+        if not self.device_id:
+            self.find_device()
+        data = {"DeviceId": device_id or self.device_id,
+                "DeviceMac": device_mac or self.device_mac,
+                "Page": page}
+        response = self._remote_post("Device/GetImgUploadList", data)
+        return(response.json())
 
     def get_my_like_img_list(self, device_id, device_mac, page):
         pass
@@ -507,4 +608,7 @@ if __name__ == "__main__":
     # print(buffer)
     # pixoo.send_animation(pic_data=buffer)
     # pixoo.control_custom_channel(2)
+    # pixoo.find_device()
     pixoo.send_album()
+    # pixoo.send_text(0, 0, 0, 0, 0, 64, "Hello World", 0, "#FFFF00", 2)
+    # print(pixoo.get_font_list())
