@@ -124,7 +124,6 @@ class PixooAPI:
         '''
         data = {"Command": "Channel/GetClockInfo"}
         response = self._local_post(data)
-        print(response.text)
 
     def select_channel(self, select_index):
         '''
@@ -184,7 +183,6 @@ class PixooAPI:
         '''
         data = {"Command": "Channel/GetIndex"}
         response = self._local_post(data)
-        print(response.text)
 
     def set_brightness(self, brightness):
         '''
@@ -215,7 +213,6 @@ class PixooAPI:
         '''
         data = {"Command": "Channel/GetAllConf"}
         response = self._local_post(data)
-        print(response.text)
 
         resp_json = response.json()
 
