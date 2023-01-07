@@ -1,6 +1,5 @@
 import qrcode
 import re
-from PIL import Image, ImageOps
 from typing import Union
 
 
@@ -19,7 +18,7 @@ class QRCode():
     def set_color(self, fill_color: Union[str, tuple], back_color: Union[str, tuple]):
         self.set_fill_color(fill_color)
         self.set_back_color(back_color)
-    
+
     def generate(self):
         qr = qrcode.QRCode(
             version=10,
@@ -31,7 +30,7 @@ class QRCode():
         qr.make(fit=True)
 
         self.img = qr.make_image(fill_color=self.fill_color, back_color=self.back_color)
-    
+
     def buffer(self):
         buffer = []
         for x in range(64):
@@ -130,6 +129,7 @@ class QRCode():
         :param PH2: (WPA2-EAP only) Phase 2 method, like MSCHAPV2
         '''
         pass
+
 
 if __name__ == "__main__":
     qr = QRCode("Hello World")
