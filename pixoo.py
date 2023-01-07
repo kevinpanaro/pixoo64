@@ -8,6 +8,9 @@ import colorsys
 from PIL import Image, ImageOps
 import matplotlib.pyplot as plt
 
+# for url images
+from io import BytesIO
+
 
 class Pixoo:
     __refresh_limit = 32
@@ -443,25 +446,60 @@ class Pixoo:
             "PicData": pic_data,
         }
         self._local_post(data)
+        print(f"frame {pic_offset} sent.")
 
     def buffer_clear(self):
         self.buffer = []
 
     def buffer_set(self, buffer):
         self.buffer = buffer
+    
+    def buffer_set_from_frame(self, frame):
+        '''
+        :param frame: a single image frame
+        '''
+        buffer = []
+        size_x, size_y = frame.size
+        for x in range(size_x):
+            for y in range(size_y):
+                r, g, b = frame.getpixel((x, y))
+                buffer.append(r)
+                buffer.append(g)
+                buffer.append(b)
+        self.buffer_set(buffer)
 
     def _prepare_buffer(self):
         self.buffer_str = str(base64.b64encode(bytearray(self.buffer)).decode())
+        # print(self.buffer_str)
 
     def send_gif(self):
         if not self.buffer:
             print(f"The buffer is empty.")
-            return
-        self._prepare_buffer()
+            # return
         self._send_gif()
         
     def _send_gif(self):
-        pass
+        with Image.open("meme.gif") as im:
+            pic_num = im.n_frames - 1
+            try:
+                pic_offset=0
+                while True:
+                    im.seek(im.tell() + 1)
+                    # img = img.rotate(270)
+                    # img = ImageOps.mirror(img)
+                    small = im.resize((64,64), Image.Resampling.BILINEAR)
+                    self.buffer_set_from_frame(small)
+                    # pic_id = self.get_sending_animation_pic_id()['PicId']
+                    self._prepare_buffer()
+                    self.send_animation(pic_num=pic_num,
+                                        pic_width=self._size,
+                                        pic_offset=pic_offset,
+                                        pic_id=0,
+                                        pic_speed=60,
+                                        pic_data=self.buffer_str)
+                    pic_offset += 1
+            except:
+                pass
 
     def send_image(self):
         if not self.buffer:
@@ -493,9 +531,27 @@ class Pixoo:
                 buffer.append(b)
         return buffer
 
+    def url_img_to_buffer(self, img_url):
+        buffer = []
+        img = Image.open(requests.get(img_url, stream=True).raw)
+        img = img.rotate(270)
+        img = ImageOps.mirror(img)
+        small = img.resize((64,64), Image.Resampling.BILINEAR)
+        for x in range(64):
+            for y in range(64):
+                r, g, b = small.getpixel((x, y))
+                buffer.append(r)
+                buffer.append(g)
+                buffer.append(b)
+        return buffer
+
     def send_album(self):
         # self.reset_sending_animation_pic_id()
         self.buffer = self.album()
+        self.send_image()
+
+    def send_url_image(self, img_url):
+        self.buffer = self.url_img_to_buffer(img_url)
         self.send_image()
     
     def send_text(self, text_id, x, y, dirr, font, text_width, text_string, speed, color, align):
@@ -602,13 +658,14 @@ class Pixoo:
 
 if __name__ == "__main__":
     pixoo = Pixoo("192.168.0.154")
-    # pixoo.reset_sending_animation_pic_id()
+    pixoo.reset_sending_animation_pic_id()
+    pixoo._send_gif()
     # pixoo.get_sending_animation_pic_id()
     # buffer = pixoo.create_fake_buffer()
     # print(buffer)
     # pixoo.send_animation(pic_data=buffer)
     # pixoo.control_custom_channel(2)
     # pixoo.find_device()
-    pixoo.send_album()
+    # pixoo.send_album()
     # pixoo.send_text(0, 0, 0, 0, 0, 64, "Hello World", 0, "#FFFF00", 2)
     # print(pixoo.get_font_list())
