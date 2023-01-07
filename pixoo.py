@@ -641,7 +641,7 @@ class Pixoo64(PixooAPI):
 
     def send_image(self):
         '''
-        This uploads the image to the Pixoo 64
+        This uploads the image in the buffer to the Pixoo 64
         '''
         if not self.buffer:
             print(f"The buffer is empty.")

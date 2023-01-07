@@ -2,7 +2,8 @@ import configparser
 from requests import get
 from urllib.parse import urljoin
 
-class HASpotify():
+
+class HASpotify:
     '''
     this uses home assistant to get the currently playing song album
     '''
@@ -30,6 +31,7 @@ class HASpotify():
         except KeyError:
             self.cover_url = None
         return self.cover_url
+
 
 if __name__=="__main__":
     sp = HASpotify()

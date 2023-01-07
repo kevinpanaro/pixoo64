@@ -44,21 +44,31 @@ class QRCode():
                 buffer.append(val)
         return buffer
 
+    def add_string(self, string):
+        self.data = string
+
+        self.generate()
+        return self.buffer()
+
     def add_url(self, url):
         '''
         nothing gets checked
         '''
         self.data = url
 
+        self.generate()
+        return self.buffer()
+
     def add_email(self, address, cc=None, bcc=None, subject=None, body=None):
         '''
         probably add some email validation at some point
         '''
         temp_data = None
+
         def concat(items):
             if isinstance(items, list):
                 items = ','.join(items)
-            return(items)
+            return items
 
         def format_str(string):
             string = string.split(" ")
@@ -84,11 +94,17 @@ class QRCode():
 
         self.data = temp_data
 
+        self.generate()
+        return self.buffer()
+
     def add_phone(self, number, country_code=1):
         temp_data = f"tel:+{country_code}"
         number = re.sub('[^0-9]', '', number)
         temp_data = f"{temp_data}{number}"
         self.data = temp_data
+
+        self.generate()
+        return self.buffer()
 
     def add_vcard(self):
         pass
@@ -103,6 +119,9 @@ class QRCode():
 
     def add_maps(self, latitude, longitude, altitude=100):
         self.data = f"geo:{latitude},{longitude},{altitude}"
+
+        self.generate()
+        return self.buffer()
 
     def add_calendar_event(self, summary, start, end):
         pass
