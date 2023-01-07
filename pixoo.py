@@ -11,7 +11,8 @@ from PIL import Image, ImageOps
 from io import BytesIO
 
 
-class Pixoo:
+class PixooAPI:
+    # http://doc.divoom-gz.com/web/#/12?page_id=143
     __refresh_limit = 32
     _dial_type_list = []
     _dial_list = []
@@ -34,7 +35,7 @@ class Pixoo:
     _mirror_flag = None
     _light_switch = None
 
-    def __init__(self, ip, size=64, refresh=True):
+    def __init__(self, ip, size=None, refresh=True):
         self._ip = ip
         self._size = size
         self._refresh = refresh
@@ -78,9 +79,11 @@ class Pixoo:
         return self.__local_post(url=self.url, data=data)
 
     def find_device(self):
+        '''
+        Description: get the device list in local network.
+        '''
         response = self._remote_post("Device/ReturnSameLANDevice")
-        print(response.text)
-        return(response.json())
+        return response.json()
 
     def dial_type(self):
         '''
@@ -90,7 +93,7 @@ class Pixoo:
         self._dial_type_list = response.json()["DialTypeList"]
         print(response.text)
 
-    def dial_list(self, dial_type=None, page=None):
+    def dial_list(self, dial_type=None, page=1):
         '''
         Description: select dial List.
 
@@ -104,7 +107,7 @@ class Pixoo:
             return
         data = {"DialType": dial_type, "Page": page}
         response = self._remote_post(url="Channel/GetDialList", data=data)
-        print(response.text)
+        return response.json()
 
     def select_faces_channel(self, clock_id):
         '''
@@ -117,7 +120,7 @@ class Pixoo:
 
     def get_select_face_id(self):
         '''
-        Description: Get working Faces id .
+        Description: Get working Faces id.
         '''
         data = {"Command": "Channel/GetClockInfo"}
         response = self._local_post(data)
@@ -196,19 +199,19 @@ class Pixoo:
     def get_all_setting(self):
         '''
         Description: it will get all settings and be ok at 90104.
-            _brightness: 0~100, the system brightness
-            _rotation_flag: 1: it will switch to display faces and gifs
-            _clock_time: the time of displaying faces and it will be active with RotationFlag = 1
-            _gallery_time: the time of displaying gifs and it will be active with RotationFlag = 1
-            _single_gallery_time: the time of displaying each gif
-            _power_on_channel_id: device will display the channle when it powers on
-            _gallery_show_time_flag: 1: it will display time at right-top ;
-            _cur_clock_id: the running's face id
-            _time_24_flag: the display hour flag
-            _temperature_mode: the display hour flag
-            _gyrate_angle: the rotation angle: 0: normal; 1: 90; 2: 180; 3: 270
-            _mirror_flag: the mirror mode
-            _light_switch: the screen switch
+            brightness: 0~100, the system brightness
+            rotation_flag: 1: it will switch to display faces and gifs
+            clock_time: the time of displaying faces and it will be active with RotationFlag = 1
+            gallery_time: the time of displaying gifs and it will be active with RotationFlag = 1
+            single_gallery_time: the time of displaying each gif
+            power_on_channel_id: device will display the channle when it powers on
+            gallery_show_time_flag: 1: it will display time at right-top ;
+            cur_clock_id: the running's face id
+            time_24_flag: the display hour flag
+            temperature_mode: the display hour flag
+            gyrate_angle: the rotation angle: 0: normal; 1: 90; 2: 180; 3: 270
+            mirror_flag: the mirror mode
+            light_switch: the screen switch
         '''
         data = {"Command": "Channel/GetAllConf"}
         response = self._local_post(data)
@@ -268,12 +271,6 @@ class Pixoo:
         data = {"Command": "Channel/OnOffScreen", "OnOff": on_off}
         self._local_post(data)
 
-    def screen_switch_on(self):
-        self.screen_switch(on_off=1)
-
-    def screen_switch_off(self):
-        self.screen_switch(on_off=0)
-
     def get_device_time(self):
         '''
         Description: it will get the device system time.
@@ -281,7 +278,9 @@ class Pixoo:
         '''
         data = {"Command": "Device/GetDeviceTime"}
         response = self._local_post(data)
-        print(response.text)
+        self._utctime = response.json()['UTCTime']
+        self._localtime = response.json()['LocalTime']
+        return response.json()
 
     def set_temperature_mode(self, mode):
         '''
@@ -351,7 +350,7 @@ class Pixoo:
         '''
         data = {"Command": "Device/GetWeatherInfo"}
         response = self._local_post(data)
-        print(response.text)
+        return response.json()
 
     def set_countdown_tool(self, minute, second, status):
         '''
@@ -443,7 +442,7 @@ class Pixoo:
         :param pic_width: the pixels of the animation, [16, 32, 64]
         :param pic_offset: the frame number of the animation, starting from 0
         :param pic_id: the animation ID, one per animation
-        :param pic_speed: the animation speed, in ms
+        :param pic_speed: the animation speed, in ms, time between frames
         :param pic_data: the picture base64 encoded RGB data, left to right and top to bottom
         '''
         data = {
@@ -456,115 +455,6 @@ class Pixoo:
             "PicData": pic_data,
         }
         self._local_post(data)
-        print(f"frame {pic_offset} sent.")
-
-    def buffer_clear(self):
-        self.buffer = []
-
-    def buffer_set(self, buffer):
-        self.buffer = buffer
-
-    def buffer_set_from_frame(self, frame):
-        '''
-        :param frame: a single image frame
-        '''
-        if frame.mode != 'RGB':
-            frame = frame.convert("RGB")
-        buffer = []
-        size_x, size_y = frame.size
-        for x in range(size_x):
-            for y in range(size_y):
-                r, g, b = frame.getpixel((x, y))
-                buffer.append(r)
-                buffer.append(g)
-                buffer.append(b)
-        self.buffer_set(buffer)
-
-    def _prepare_buffer(self):
-        self.buffer_str = str(base64.b64encode(bytearray(self.buffer)).decode())
-
-    def send_gif(self):
-        if not self.buffer:
-            print(f"The buffer is empty.")
-            # return
-        self._send_gif()
-
-    def _send_gif(self):
-        with Image.open("sponge.gif") as im:
-            pic_num = im.n_frames - 1
-            try:
-                pic_offset = 0
-                while True:
-                    im.seek(im.tell() + 1)
-                    small = im.resize((64, 64), Image.Resampling.BILINEAR)
-                    small = small.rotate(270)
-                    small = ImageOps.mirror(small)
-                    self.buffer_set_from_frame(small)
-                    pic_id = 0  # self.get_sending_animation_pic_id()['PicId']
-                    self._prepare_buffer()
-                    pic_speed = small.info['duration']
-                    self.send_animation(pic_num=pic_num,
-                                        pic_width=self._size,
-                                        pic_offset=pic_offset,
-                                        pic_id=pic_id,
-                                        pic_speed=pic_speed,
-                                        pic_data=self.buffer_str)
-                    pic_offset += 1
-            except EOFError:
-                pass
-
-    def send_image(self):
-        if not self.buffer:
-            print(f"The buffer is empty.")
-            return
-        self._prepare_buffer()
-        self._send_image()
-
-    def _send_image(self):
-        pic_id = self.get_sending_animation_pic_id()['PicId']
-        self.send_animation(pic_num=1,
-                            pic_width=self._size,
-                            pic_offset=0,
-                            pic_id=pic_id,
-                            pic_speed=1000,
-                            pic_data=self.buffer_str)
-
-    def album(self):
-        buffer = []
-        img = Image.open('roo.jpg')
-        img = img.rotate(270)
-        img = ImageOps.mirror(img)
-        small = img.resize((64, 64), Image.Resampling.BILINEAR)
-        for x in range(64):
-            for y in range(64):
-                r, g, b = small.getpixel((x, y))
-                buffer.append(r)
-                buffer.append(g)
-                buffer.append(b)
-        return buffer
-
-    def url_img_to_buffer(self, img_url):
-        buffer = []
-        img = Image.open(requests.get(img_url, stream=True).raw)
-        img = img.rotate(270)
-        img = ImageOps.mirror(img)
-        small = img.resize((64,64), Image.Resampling.BILINEAR)
-        for x in range(64):
-            for y in range(64):
-                r, g, b = small.getpixel((x, y))
-                buffer.append(r)
-                buffer.append(g)
-                buffer.append(b)
-        return buffer
-
-    def send_album(self):
-        # self.reset_sending_animation_pic_id()
-        self.buffer = self.album()
-        self.send_image()
-
-    def send_url_image(self, img_url):
-        self.buffer = self.url_img_to_buffer(img_url)
-        self.send_image()
 
     def send_text(self, text_id, x, y, dirr, font, text_width, text_string, speed, color, align):
         '''
@@ -668,17 +558,134 @@ class Pixoo:
     def url_command_file(self, command_file):
         pass
 
+
+class Pixoo64(PixooAPI):
+    def __init__(self, ip):
+        super().__init__(ip=ip, size=64)
+
+    def screen_switch_on(self):
+        '''
+        turns off the screen
+        '''
+        self.screen_switch(on_off=1)
+
+    def screen_switch_off(self):
+        '''
+        turns on the screen
+        '''
+        self.screen_switch(on_off=0)
+
+    def buffer_clear(self):
+        '''
+        clears the buffer.
+        '''
+        self.buffer = []
+
+    def buffer_set(self, buffer):
+        '''
+        sets the buffer.
+        :param buffer: the buffer
+        '''
+        self.buffer = buffer
+
+    def buffer_set_from_frame(self, frame):
+        '''
+        :param frame: a single image frame,
+            this can be either an image or a frame from a gif
+        '''
+        if frame.mode != 'RGB':
+            frame = frame.convert("RGB")
+        buffer = []
+        size_x, size_y = frame.size
+        for x in range(size_x):
+            for y in range(size_y):
+                r, g, b = frame.getpixel((x, y))
+                buffer.append(r)
+                buffer.append(g)
+                buffer.append(b)
+        self.buffer_set(buffer)
+
+    def _prepare_buffer(self):
+        '''
+        encodes the buffer
+        '''
+        self.buffer_str = str(base64.b64encode(bytearray(self.buffer)).decode())
+
+    def send_local_gif(self, filename):
+        self._send_local_gif(filename=filename)
+
+    def _send_local_gif(self, filename=None):
+        '''
+        this iterates over the frames of a gif and sends them to the device.
+        there's some weird stuff going on with the first frames, so we skip them
+        '''
+        with Image.open(filename) as im:
+            pic_num = im.n_frames - 1
+            pic_id = self.get_sending_animation_pic_id()['PicId']
+            try:
+                pic_offset = 0
+                while True:
+                    im.seek(im.tell() + 1)
+                    small = im.resize((64, 64), Image.Resampling.BILINEAR)
+                    small = small.rotate(270)
+                    small = ImageOps.mirror(small)
+                    self.buffer_set_from_frame(small)
+                    self._prepare_buffer()
+                    pic_speed = small.info['duration']
+                    self.send_animation(pic_num=pic_num,
+                                        pic_width=self._size,
+                                        pic_offset=pic_offset,
+                                        pic_id=pic_id,
+                                        pic_speed=pic_speed,
+                                        pic_data=self.buffer_str)
+                    pic_offset += 1
+            except EOFError:
+                pass
+
+    def send_image(self):
+        '''
+        This uploads the image to the Pixoo 64
+        '''
+        if not self.buffer:
+            print(f"The buffer is empty.")
+            return
+        self._prepare_buffer()
+        self._send_image()
+
+    def _send_image(self):
+        pic_id = self.get_sending_animation_pic_id()['PicId']
+        self.send_animation(pic_num=1,
+                            pic_width=self._size,
+                            pic_offset=0,
+                            pic_id=pic_id,
+                            pic_speed=1000,
+                            pic_data=self.buffer_str)
+
+    def send_url_image(self, img_url):
+        self.url_img_to_buffer(img_url)
+        self.send_image()
+
+    def url_img_to_buffer(self, img_url):
+        img = Image.open(requests.get(img_url, stream=True).raw)
+        img = img.rotate(270)
+        img = ImageOps.mirror(img)
+        small = img.resize((64, 64), Image.Resampling.BILINEAR)
+        self.buffer_set_from_frame(small)
+
+    def send_local_image(self, filename):
+        self.local_image(filename=filename)
+        self.send_image()
+
+    def local_image(self, filename=None):
+        img = Image.open(filename)
+        img = img.rotate(270)
+        img = ImageOps.mirror(img)
+        small = img.resize((64, 64), Image.Resampling.BILINEAR)
+        self.buffer_set_from_frame(small)
+
+
 if __name__ == "__main__":
-    pixoo = Pixoo("192.168.0.154")
+    pixoo = Pixoo64("192.168.0.154")
     pixoo.reset_sending_animation_pic_id()
-    # pixoo.send_url_image("https://i.redd.it/6yhcaoxye1aa1.jpg")
-    pixoo._send_gif()
-    # pixoo.get_sending_animation_pic_id()
-    # buffer = pixoo.create_fake_buffer()
-    # print(buffer)
-    # pixoo.send_animation(pic_data=buffer)
-    # pixoo.control_custom_channel(2)
-    # pixoo.find_device()
-    # pixoo.send_album()
-    # pixoo.send_text(0, 0, 0, 0, 0, 64, "Hello World", 0, "#FFFF00", 2)
-    # print(pixoo.get_font_list())
+    # pixoo.send_local_gif("think-smart.gif")
+    # pixoo.screen_switch_on()
