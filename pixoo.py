@@ -542,20 +542,20 @@ class PixooDevice(PixooAPI):
         '''
         self.screen_switch(on_off=0)
 
-    def buffer_clear(self):
+    def clear_buffer(self):
         '''
         clears the buffer.
         '''
         self.buffer = []
 
-    def buffer_set(self, buffer):
+    def set_buffer(self, buffer):
         '''
         sets the buffer.
         :param buffer: the buffer
         '''
         self.buffer = buffer
 
-    def buffer_set_from_frame(self, frame):
+    def set_buffer_from_frame(self, frame):
         '''
         :param frame: a single image frame,
             this can be either an image or a frame from a gif
@@ -570,7 +570,7 @@ class PixooDevice(PixooAPI):
                 buffer.append(r)
                 buffer.append(g)
                 buffer.append(b)
-        self.buffer_set(buffer)
+        self.set_buffer(buffer)
 
     def _prepare_buffer(self):
         '''
@@ -607,12 +607,10 @@ class PixooDevice(PixooAPI):
             pic_offset = 0
             while True:
                 gif.seek(gif.tell() + 1)
-                small = gif.resize((64, 64), Image.Resampling.BILINEAR)
-                small = small.rotate(270)
-                small = ImageOps.mirror(small)
-                self.buffer_set_from_frame(small)
+                frame = self.prepare_frame(gif)
+                self.set_buffer_from_frame(frame)
                 self._prepare_buffer()
-                pic_speed = small.info['duration']
+                pic_speed = frame.info['duration']
                 self.send_animation(pic_num=pic_num,
                                     pic_width=self._size,
                                     pic_offset=pic_offset,
@@ -649,10 +647,8 @@ class PixooDevice(PixooAPI):
     def url_img_to_buffer(self, img_url):
         response = requests.get(img_url, headers={'User-Agent': 'null'}, stream=True)
         with Image.open(BytesIO(response.content)) as img:
-            img = img.rotate(270)
-            img = ImageOps.mirror(img)
-            small = img.resize((64, 64), Image.Resampling.BILINEAR)
-            self.buffer_set_from_frame(small)
+            frame = self.prepare_frame(img)
+            self.set_buffer_from_frame(frame)
 
     def send_local_image(self, filename):
         self.local_img_to_buffer(filename=filename)
@@ -660,16 +656,14 @@ class PixooDevice(PixooAPI):
 
     def local_img_to_buffer(self, filename=None):
         with Image.open(filename) as img:
-            img = img.rotate(270)
-            img = ImageOps.mirror(img)
-            small = img.resize((64, 64), Image.Resampling.BILINEAR)
-            self.buffer_set_from_frame(small)
+            frame = self.prepare_frame(img)
+            self.set_buffer_from_frame(frame)
 
     def prepare_frame(self, frame):
-        pass
-
-    def send_frame_to_buffer(self):
-        pass
+        frame = frame.rotate(270)
+        frame = ImageOps.mirror(frame)
+        frame = frame.resize((self._size, self._size), Image.Resampling.BILINEAR)
+        return frame
 
 
 class Pixoo64(PixooDevice):
@@ -679,4 +673,3 @@ class Pixoo64(PixooDevice):
 
 if __name__ == "__main__":
     pixoo = Pixoo64("192.168.0.154")
-    pixoo.send_url_gif("https://www.mathworks.com/matlabcentral/mlc-downloads/downloads/submissions/21944/versions/3/screenshot.gif")
