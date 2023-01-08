@@ -608,6 +608,13 @@ class Pixoo64(PixooAPI):
         '''
         self.buffer_str = str(base64.b64encode(bytearray(self.buffer)).decode())
 
+    def send_url_gif(self, url):
+        self._send_url_gif(url)
+
+    def _send_url_gif(self, url=None):
+        with Image.open(requests.get(url, stream=True).raw) as gif:
+            self._send_gif(gif)
+
     def send_local_gif(self, filename):
         self._send_local_gif(filename=filename)
 
@@ -616,28 +623,31 @@ class Pixoo64(PixooAPI):
         this iterates over the frames of a gif and sends them to the device.
         there's some weird stuff going on with the first frames, so we skip them
         '''
-        with Image.open(filename) as im:
-            pic_num = im.n_frames - 1
-            pic_id = self.get_sending_animation_pic_id()['PicId']
-            try:
-                pic_offset = 0
-                while True:
-                    im.seek(im.tell() + 1)
-                    small = im.resize((64, 64), Image.Resampling.BILINEAR)
-                    small = small.rotate(270)
-                    small = ImageOps.mirror(small)
-                    self.buffer_set_from_frame(small)
-                    self._prepare_buffer()
-                    pic_speed = small.info['duration']
-                    self.send_animation(pic_num=pic_num,
-                                        pic_width=self._size,
-                                        pic_offset=pic_offset,
-                                        pic_id=pic_id,
-                                        pic_speed=pic_speed,
-                                        pic_data=self.buffer_str)
-                    pic_offset += 1
-            except EOFError:
-                pass
+        with Image.open(filename) as gif:
+            self._send_gif(gif)
+
+    def _send_gif(self, gif=None):
+        pic_num = gif.n_frames - 1
+        pic_id = self.get_sending_animation_pic_id()['PicId']
+        try:
+            pic_offset = 0
+            while True:
+                gif.seek(gif.tell() + 1)
+                small = gif.resize((64, 64), Image.Resampling.BILINEAR)
+                small = small.rotate(270)
+                small = ImageOps.mirror(small)
+                self.buffer_set_from_frame(small)
+                self._prepare_buffer()
+                pic_speed = small.info['duration']
+                self.send_animation(pic_num=pic_num,
+                                    pic_width=self._size,
+                                    pic_offset=pic_offset,
+                                    pic_id=pic_id,
+                                    pic_speed=pic_speed,
+                                    pic_data=self.buffer_str)
+                pic_offset += 1
+        except EOFError:
+            pass
 
     def send_image(self):
         '''
@@ -646,10 +656,10 @@ class Pixoo64(PixooAPI):
         if not self.buffer:
             print(f"The buffer is empty.")
             return
-        self._prepare_buffer()
         self._send_image()
 
     def _send_image(self):
+        self._prepare_buffer()
         pic_id = self.get_sending_animation_pic_id()['PicId']
         self.send_animation(pic_num=1,
                             pic_width=self._size,
@@ -663,26 +673,23 @@ class Pixoo64(PixooAPI):
         self.send_image()
 
     def url_img_to_buffer(self, img_url):
-        img = Image.open(requests.get(img_url, stream=True).raw)
-        img = img.rotate(270)
-        img = ImageOps.mirror(img)
-        small = img.resize((64, 64), Image.Resampling.BILINEAR)
-        self.buffer_set_from_frame(small)
+        with Image.open(requests.get(img_url, stream=True).raw) as img:
+            img = img.rotate(270)
+            img = ImageOps.mirror(img)
+            small = img.resize((64, 64), Image.Resampling.BILINEAR)
+            self.buffer_set_from_frame(small)
 
     def send_local_image(self, filename):
-        self.local_image(filename=filename)
+        self.local_img_to_buffer(filename=filename)
         self.send_image()
 
-    def local_image(self, filename=None):
-        img = Image.open(filename)
-        img = img.rotate(270)
-        img = ImageOps.mirror(img)
-        small = img.resize((64, 64), Image.Resampling.BILINEAR)
-        self.buffer_set_from_frame(small)
+    def local_img_to_buffer(self, filename=None):
+        with Image.open(filename) as img:
+            img = img.rotate(270)
+            img = ImageOps.mirror(img)
+            small = img.resize((64, 64), Image.Resampling.BILINEAR)
+            self.buffer_set_from_frame(small)
 
 
 if __name__ == "__main__":
     pixoo = Pixoo64("192.168.0.154")
-    pixoo.reset_sending_animation_pic_id()
-    # pixoo.send_local_gif("think-smart.gif")
-    # pixoo.screen_switch_on()
