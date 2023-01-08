@@ -1,6 +1,5 @@
 import base64
 import json
-import logging
 import re
 import requests
 from urllib.parse import urljoin
@@ -79,7 +78,7 @@ class PixooAPI:
         '''
         Description: get the device list in local network.
         '''
-        self._remote_post("Device/ReturnSameLANDevice")
+        self._remote_post(url="Device/ReturnSameLANDevice")
 
     def dial_type(self):
         '''
@@ -514,7 +513,7 @@ class PixooAPI:
         data = {"DeviceId": device_id or self.attr_device_list[0]['DeviceId'],
                 "DeviceMac": device_mac or self.attr_device_list[0]['DeviceMac'],
                 "Page": page}
-        self._remote_post("Device/GetImgUploadList", data)
+        self._remote_post(url="Device/GetImgUploadList", data=data)
 
     def get_my_like_img_list(self, device_id, device_mac, page):
         pass
