@@ -609,6 +609,10 @@ class Pixoo64(PixooAPI):
         self.buffer_str = str(base64.b64encode(bytearray(self.buffer)).decode())
 
     def send_url_gif(self, url):
+        '''
+        sends a gif from the internet!
+        try this one! https://www.mathworks.com/matlabcentral/mlc-downloads/downloads/submissions/21944/versions/3/screenshot.gif
+        '''
         self._send_url_gif(url)
 
     def _send_url_gif(self, url=None):
@@ -673,7 +677,8 @@ class Pixoo64(PixooAPI):
         self.send_image()
 
     def url_img_to_buffer(self, img_url):
-        with Image.open(requests.get(img_url, stream=True).raw) as img:
+        response = requests.get(img_url, headers={'User-Agent': 'null'}, stream=True)
+        with Image.open(BytesIO(response.content)) as img:
             img = img.rotate(270)
             img = ImageOps.mirror(img)
             small = img.resize((64, 64), Image.Resampling.BILINEAR)
