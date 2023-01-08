@@ -1,39 +1,22 @@
 import base64
 import json
+import logging
+import re
 import requests
 from urllib.parse import urljoin
-import colorsys
 
-# for albums
+# for images
 from PIL import Image, ImageOps
 
 # for url images
 from io import BytesIO
 
+from setup_logger import logger
+
 
 class PixooAPI:
     # http://doc.divoom-gz.com/web/#/12?page_id=143
     __refresh_limit = 32
-    _dial_type_list = []
-    _dial_list = []
-    _select_face_id = None
-    _select_channel_id = None
-    _font_list = []
-
-    # all settings
-    _brightness = None
-    _rotation_flag = None
-    _clock_time = None
-    _gallery_time = None
-    _single_gallery_time = None
-    _power_on_channel_id = None
-    _gallery_show_time_flag = None
-    _cur_clock_id = None
-    _time_24_flag = None
-    _temperature_mode = None
-    _gyrate_angle = None
-    _mirror_flag = None
-    _light_switch = None
 
     def __init__(self, ip, size=None, refresh=True):
         self._ip = ip
@@ -49,49 +32,60 @@ class PixooAPI:
 
     def __post(self, url, data=None):
         response = requests.post(url, data)
+        if response.status_code != 200:
+            logger.warning(f"Bad Response Code: {response.status_code}")
         return response
 
-    def __local_error(self, response):
-        error = response.json()['error_code']
-        if error != 0:
-            print(f"There was a local error: {error}")
+    def __local_error(self):
+        self.__error(self.attr_error_code)
 
-    def __remote_error(self, response):
-        error = response.json()['ReturnCode']
-        if error != 0:
-            print(f"There was a remote error: {error}")
+    def __remote_error(self):
+        self.__error(self.attr_return_code)
+
+    def __error(self, attribute):
+        if attribute != 0:
+            logger.error(f"There was an error: {attribute}")
 
     def __remote_post(self, url, data=None):
         response = self.__post(url, data)
-        self.__remote_error(response)
-        return response
+        self._set_attribute_from_response(response.json())
+        self.__remote_error()
 
     def _remote_post(self, url=None, data=None):
         url = urljoin(self.remote, url)
-        return self.__remote_post(url, data)
+        self.__remote_post(url, data)
 
     def __local_post(self, url=None, data=None):
         response = self.__post(url=url, data=json.dumps(data))
-        self.__local_error(response)
-        return response
+        self._set_attribute_from_response(response.json())
+        self.__local_error()
 
     def _local_post(self, data=None):
-        return self.__local_post(url=self.url, data=data)
+        self.__local_post(url=self.url, data=data)
+
+    def __camel_to_snake(self, camel):
+        pattern = re.compile(r'(?<!^)(?=[A-Z])')
+        snake = pattern.sub('_', camel).lower()
+        return snake
+
+    def _set_attribute_from_response(self, response):
+        for key in response:
+            snake = self.__camel_to_snake(key)
+            snake = "_".join(("attr", snake))
+            setattr(self, snake, response[key])
+            logger.debug(f"Attribute Set: self.{snake} = {response[key]}")
 
     def find_device(self):
         '''
         Description: get the device list in local network.
         '''
-        response = self._remote_post("Device/ReturnSameLANDevice")
-        return response.json()
+        self._remote_post("Device/ReturnSameLANDevice")
 
     def dial_type(self):
         '''
         Description: select dial type.
         '''
-        response = self._remote_post(url="Channel/GetDialType")
-        self._dial_type_list = response.json()["DialTypeList"]
-        print(response.text)
+        self._remote_post(url="Channel/GetDialType")
 
     def dial_list(self, dial_type=None, page=1):
         '''
@@ -100,14 +94,13 @@ class PixooAPI:
         :param dial_type: dial type, returned from self.dial_type()
         :param page: the number of pages, for example 1, Notes: 30 per page (???)
         '''
-        if not self._dial_type_list:
+        if not hasattr(self, 'attr_dial_type_list'):
             self.dial_type()
-        if dial_type not in self._dial_type_list:
-            print(f"invalid dial type: {dial_type}; available: {self._dial_type_list}")
+        if dial_type not in self.attr_dial_type_list:
+            print(f"invalid dial type: {dial_type}; available: {self.attr_dial_type_list}")
             return
         data = {"DialType": dial_type, "Page": page}
-        response = self._remote_post(url="Channel/GetDialList", data=data)
-        return response.json()
+        self._remote_post(url="Channel/GetDialList", data=data)
 
     def select_faces_channel(self, clock_id):
         '''
@@ -123,7 +116,7 @@ class PixooAPI:
         Description: Get working Faces id.
         '''
         data = {"Command": "Channel/GetClockInfo"}
-        response = self._local_post(data)
+        self._local_post(data)
 
     def select_channel(self, select_index):
         '''
@@ -182,7 +175,8 @@ class PixooAPI:
             4: Black Screen
         '''
         data = {"Command": "Channel/GetIndex"}
-        response = self._local_post(data)
+        self._local_post(data)
+        return self.attr_select_index
 
     def set_brightness(self, brightness):
         '''
@@ -212,23 +206,7 @@ class PixooAPI:
             light_switch: the screen switch
         '''
         data = {"Command": "Channel/GetAllConf"}
-        response = self._local_post(data)
-
-        resp_json = response.json()
-
-        self._brightness = resp_json["Brightness"]
-        self._rotation_flag = resp_json["RotationFlag"]
-        self._clock_time = resp_json["ClockTime"]
-        self._gallery_time = resp_json["GalleryTime"]
-        self._single_gallery_time = resp_json["SingleGalleyTime"]
-        self._power_on_channel_id = resp_json["PowerOnChannelId"]
-        self._gallery_show_time_flag = resp_json["GalleryShowTimeFlag"]
-        self._cur_clock_id = resp_json["CurClockId"]
-        self._time_24_flag = resp_json["Time24Flag"]
-        self._temperature_mode = resp_json["TemperatureMode"]
-        self._gyrate_angle = resp_json["GyrateAngle"]
-        self._mirror_flag = resp_json["MirrorFlag"]
-        self._light_switch = resp_json["LightSwitch"]
+        self._local_post(data)
 
     def set_weather_area(self, latitude, longitude):
         '''
@@ -274,10 +252,7 @@ class PixooAPI:
             it will be active after 90107.
         '''
         data = {"Command": "Device/GetDeviceTime"}
-        response = self._local_post(data)
-        self._utctime = response.json()['UTCTime']
-        self._localtime = response.json()['LocalTime']
-        return response.json()
+        self._local_post(data)
 
     def set_temperature_mode(self, mode):
         '''
@@ -346,8 +321,7 @@ class PixooAPI:
         Description: it will get the display weather information of the device.
         '''
         data = {"Command": "Device/GetWeatherInfo"}
-        response = self._local_post(data)
-        return response.json()
+        self._local_post(data)
 
     def set_countdown_tool(self, minute, second, status):
         '''
@@ -418,8 +392,7 @@ class PixooAPI:
             the command will be implemented after the 90095 version.
         '''
         data = {"Command": "Draw/GetHttpGifId"}
-        response = self._local_post(data)
-        return response.json()
+        self._local_post(data)
 
     def reset_sending_animation_pic_id(self):
         '''
@@ -479,9 +452,9 @@ class PixooAPI:
 
         example: self.send_text(0, 0, 0, 0, 0, 64, "Hello World", 0, "#FFFF00", 2)
         '''
-        if not self._font_list:
+        if not hasattr(self, 'attr_font_list'):
             self.get_font_list()
-        for _font in self._font_list:
+        for _font in self.attr_font_list:
             if _font['id'] == font:
                 break
         else:
@@ -513,9 +486,7 @@ class PixooAPI:
         self._local_post(data)
 
     def get_font_list(self):
-        response = self._remote_post(url="Device/GetTimeDialFontList")
-        self._font_list = response.json()["FontList"]
-        return self._font_list
+        self._remote_post(url="Device/GetTimeDialFontList")
 
     def send_display_list(self, item_list, text_id, type, x, y, dir, font, text_width, text_height, text_string, speed, color, update_time, align):
         pass
@@ -538,13 +509,12 @@ class PixooAPI:
         pass
 
     def get_img_upload_list(self, device_id=None, device_mac=None, page=1):
-        if not self.device_id:
+        if not hasattr(self, 'attr_device_list'):
             self.find_device()
-        data = {"DeviceId": device_id or self.device_id,
-                "DeviceMac": device_mac or self.device_mac,
+        data = {"DeviceId": device_id or self.attr_device_list[0]['DeviceId'],
+                "DeviceMac": device_mac or self.attr_device_list[0]['DeviceMac'],
                 "Page": page}
-        response = self._remote_post("Device/GetImgUploadList", data)
-        return response.json()
+        self._remote_post("Device/GetImgUploadList", data)
 
     def get_my_like_img_list(self, device_id, device_mac, page):
         pass
@@ -556,9 +526,9 @@ class PixooAPI:
         pass
 
 
-class Pixoo64(PixooAPI):
-    def __init__(self, ip):
-        super().__init__(ip=ip, size=64)
+class PixooDevice(PixooAPI):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
     def screen_switch_on(self):
         '''
@@ -632,7 +602,7 @@ class Pixoo64(PixooAPI):
 
     def _send_gif(self, gif=None):
         pic_num = gif.n_frames - 1
-        pic_id = self.get_sending_animation_pic_id()['PicId']
+        self.get_sending_animation_pic_id()
         try:
             pic_offset = 0
             while True:
@@ -646,7 +616,7 @@ class Pixoo64(PixooAPI):
                 self.send_animation(pic_num=pic_num,
                                     pic_width=self._size,
                                     pic_offset=pic_offset,
-                                    pic_id=pic_id,
+                                    pic_id=self.attr_pic_id,
                                     pic_speed=pic_speed,
                                     pic_data=self.buffer_str)
                 pic_offset += 1
@@ -664,11 +634,11 @@ class Pixoo64(PixooAPI):
 
     def _send_image(self):
         self._prepare_buffer()
-        pic_id = self.get_sending_animation_pic_id()['PicId']
+        self.get_sending_animation_pic_id()
         self.send_animation(pic_num=1,
                             pic_width=self._size,
                             pic_offset=0,
-                            pic_id=pic_id,
+                            pic_id=self.attr_pic_id,
                             pic_speed=1000,
                             pic_data=self.buffer_str)
 
@@ -695,6 +665,18 @@ class Pixoo64(PixooAPI):
             small = img.resize((64, 64), Image.Resampling.BILINEAR)
             self.buffer_set_from_frame(small)
 
+    def prepare_frame(self, frame):
+        pass
+
+    def send_frame_to_buffer(self):
+        pass
+
+
+class Pixoo64(PixooDevice):
+    def __init__(self, ip):
+        super().__init__(ip=ip, size=64)
+
 
 if __name__ == "__main__":
     pixoo = Pixoo64("192.168.0.154")
+    pixoo.send_url_gif("https://www.mathworks.com/matlabcentral/mlc-downloads/downloads/submissions/21944/versions/3/screenshot.gif")
