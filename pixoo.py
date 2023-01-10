@@ -581,11 +581,13 @@ class PixooDevice(PixooAPI):
         '''
         sends a gif from the internet!
         try this one! https://www.mathworks.com/matlabcentral/mlc-downloads/downloads/submissions/21944/versions/3/screenshot.gif
+        or this https://media0.giphy.com/media/3o6vXTpomeZEyxufGU/giphy.gif
         '''
         self._send_url_gif(url)
 
     def _send_url_gif(self, url=None):
-        with Image.open(requests.get(url, stream=True).raw) as gif:
+        response = requests.get(url, headers={'User-Agent': 'null'}, stream=True)
+        with Image.open(BytesIO(response.content)) as gif:
             self._send_gif(gif)
 
     def send_local_gif(self, filename):
@@ -600,25 +602,56 @@ class PixooDevice(PixooAPI):
             self._send_gif(gif)
 
     def _send_gif(self, gif=None):
-        pic_num = gif.n_frames - 1
+        '''
+        This sends the gif, sampling if needed
+        '''
+        pic_speeds = []
+        pic_offset = 0
+        total_frames = gif.n_frames
+        pic_num, frame_offset = self._sample_gif(gif)
+
+        logger.info(f"{total_frames / frame_offset}")
         self.get_sending_animation_pic_id()
         try:
-            pic_offset = 0
             while True:
-                gif.seek(gif.tell() + 1)
+                logger.debug(f"Frame: {pic_offset} of {pic_num}")
+                logger.debug(f"Frame offset: {frame_offset}")
+
+                # append pic speeds, use most common
+                pic_speeds.append(gif.info['duration'])
+                try:
+                    pic_speed = mode(pic_speeds)
+                except:
+                    pic_speed = pic_speeds[0]
+                logger.debug(f"Pic Speed: {pic_speed}")
+
+                # prepare data to send
                 frame = self.prepare_frame(gif)
                 self.set_buffer_from_frame(frame)
                 self._prepare_buffer()
-                pic_speed = frame.info['duration']
+
                 self.send_animation(pic_num=pic_num,
                                     pic_width=self._size,
                                     pic_offset=pic_offset,
-                                    pic_id=self.attr_pic_id,
-                                    pic_speed=pic_speed,
+                                    pic_id= self.attr_pic_id,
+                                    pic_speed=pic_speed * frame_offset,
                                     pic_data=self.buffer_str)
+                
+                # increment pic offset for the next frame
                 pic_offset += 1
+
+                # set gif to next frame
+                gif.seek(gif.tell() + frame_offset)
         except EOFError:
             pass
+
+    def _sample_gif(self, gif):
+        for denom in range(1, gif.n_frames):
+            if gif.n_frames / denom < 60:
+                frame_offset = denom
+                pic_num = int(gif.n_frames / frame_offset) + (gif.n_frames % frame_offset > 0)
+                logger.debug(f"Pic Num {pic_num} with offset {frame_offset}.")
+                return (pic_num, frame_offset)
 
     def send_image(self):
         '''
@@ -659,10 +692,21 @@ class PixooDevice(PixooAPI):
             self.set_buffer_from_frame(frame)
 
     def prepare_frame(self, frame):
+        if True:  # make it square
+            x, y = frame.size
+            size = max(x, y)
+            square = Image.new("RGB", (size, size), (0, 0, 0))
+            square.paste(frame, (int((size - x) / 2), int((size - y) / 2)))
+            frame = square.resize((self._size, self._size), Image.Resampling.BILINEAR)
+        else:
+            frame = frame.resize((self._size, self._size), Image.Resampling.BILINEAR)
+
         frame = frame.rotate(270)
         frame = ImageOps.mirror(frame)
-        frame = frame.resize((self._size, self._size), Image.Resampling.BILINEAR)
         return frame
+
+    def make_square(self, min_size):
+        pass
 
 
 class Pixoo64(PixooDevice):
@@ -672,3 +716,9 @@ class Pixoo64(PixooDevice):
 
 if __name__ == "__main__":
     pixoo = Pixoo64("192.168.0.154")
+    # pixoo.screen_switch_on()
+    # pixoo.reset_sending_animation_pic_id()
+    # pixoo.send_url_gif("https://media0.giphy.com/media/KxhWj5grlueu9ajWXw/200w.gif?cid=82a1493bol3szba1riw6yoe6zdztke27tmh8p8g5a0v7pssf&rid=200w.gif&ct=g")
+    # pixoo.send_local_gif("awake.gif")
+    pixoo.send_local_image('jules.jpg')
+    pixoo.find_device()
