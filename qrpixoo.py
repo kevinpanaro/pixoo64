@@ -107,7 +107,16 @@ class QRCode():
         return self.buffer()
 
     def add_vcard(self):
+        prefix = "BEGIN:VCARD"
+        postfix = "END:VCARD"
         pass
+
+    def mecard(self, ADR=None, BDAY=None, EMAIL=None, N=None,
+               NICKNAME=None, NOTE=None, SOUND=None, TEL=None,
+               TEL_AV=None, URL=None):
+        temp_data = "MECARD:"
+        temp_data = f"ADR"
+        return temp_data
 
     def add_sms(self, number, method, subject):
         '''

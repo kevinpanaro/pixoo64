@@ -705,6 +705,35 @@ class PixooDevice(PixooAPI):
         frame = ImageOps.mirror(frame)
         return frame
 
+    def _fit_to_matrix(self, frame, fill_color=(0, 0, 0):
+        '''
+        Description: fits the given frame to the matrix, by padding the edges and make
+            it square. Adds black bars on the edges by default.
+
+        :param frame: the image frame
+        :param fill_color: the color to fill the screen with, default is black
+        '''
+        x, y = frame.size
+        size = max(x, y)
+        square = Image.new("RGB", (size, size), fill_color)
+        square.paste(frame, (int((size - x) / 2), int((size - y) / 2))
+        frame = square.resize((self._size, self._size), Image.Resampling.BILINEAR)
+
+        frame = frame.rotate(270)
+        frame = ImageOps.mirror(frame)
+        return frame
+
+    def _zoom_to_fit(self, frame, offset=None):
+        '''
+        Description: zoom into the image to fill the entire matrix, offset
+
+        :param frame: the imagee frame
+        :param offset: number of rows to offset from the top, or left of the image
+        '''
+        x, y = frame.size
+        frame = frame.crop()
+        
+
     def make_square(self, min_size):
         pass
 
